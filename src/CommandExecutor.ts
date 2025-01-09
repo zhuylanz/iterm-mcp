@@ -4,21 +4,45 @@ import { promisify } from 'node:util';
 const execPromise = promisify(exec);
 
 class CommandExecutor {
-  async executeCommand(command: string): Promise<string> {
+  async isProcessing(): Promise<boolean> {
     const ascript = `
       tell application "iTerm2"
         activate
-        delay 0.1
-        
         if windows is equal to {} then
           create window with default profile
-          delay 0.1
         end if
         
         tell front window
           if current session of current tab is missing value then
             create tab with default profile
-            delay 0.1
+          end if
+          
+          tell current session of current tab
+            return is processing
+          end tell
+        end tell
+      end tell
+    `;
+
+    try {
+      const { stdout } = await execPromise(`osascript -e '${ascript}'`);
+      return stdout.trim() === 'true';
+    } catch (error) {
+      throw new Error(`Failed to check processing status: ${error}`);
+    }
+  }
+
+  async executeCommand(command: string): Promise<string> {
+    const ascript = `
+      tell application "iTerm2"
+        activate
+        if windows is equal to {} then
+          create window with default profile
+        end if
+        
+        tell front window
+          if current session of current tab is missing value then
+            create tab with default profile
           end if
           
           tell current session of current tab
@@ -27,51 +51,30 @@ class CommandExecutor {
         end tell
       end tell
     `;
-    
-    const { stdout } = await execPromise(`osascript -e '${ascript}'`);
-    return stdout;
-  }
 
-  async createNewTab(): Promise<void> {
-    const ascript = `
-      tell application "iTerm2"
-        activate
-        delay 0.1
-        
-        if windows is equal to {} then
-          create window with default profile
-        else
-          tell front window
-            create tab with default profile
-          end tell
-        end if
-      end tell
-    `;
-    
     await execPromise(`osascript -e '${ascript}'`);
-  }
-
-  async splitPane(vertical: boolean = true): Promise<void> {
-    const direction = vertical ? "vertical" : "horizontal";
-    const ascript = `
+    
+    // Wait until command completes
+    while (await this.isProcessing()) {
+      await new Promise(resolve => setTimeout(resolve, 100));
+    }
+    
+    // Get final output, but only the visible rows
+    const getOutput = `
       tell application "iTerm2"
-        activate
-        delay 0.1
-        
-        if windows is equal to {} then
-          create window with default profile
-          delay 0.1
-        end if
-        
         tell front window
           tell current session of current tab
-            split ${direction}ly with default profile
+            set rowCount to number of rows
+            set contentText to contents
+            set visibleContent to text 1 thru (rowCount * 200) of contentText
+            return visibleContent
           end tell
         end tell
       end tell
     `;
     
-    await execPromise(`osascript -e '${ascript}'`);
+    const { stdout } = await execPromise(`osascript -e '${getOutput}'`);
+    return stdout;
   }
 }
 
