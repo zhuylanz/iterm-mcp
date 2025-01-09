@@ -13,12 +13,10 @@ import { Server } from "@modelcontextprotocol/sdk/server/index.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import {
   CallToolRequestSchema,
-  ListResourcesRequestSchema,
   ListToolsRequestSchema,
-  ReadResourceRequestSchema,
-  ListPromptsRequestSchema,
-  GetPromptRequestSchema,
 } from "@modelcontextprotocol/sdk/types.js";
+import CommandExecutor from "./CommandExecutor.js";
+
 
 /**
  * Type alias for a note object.
@@ -61,21 +59,17 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
   return {
     tools: [
       {
-        name: "create_note",
-        description: "Create a new note",
+        name: "execute_shell_command",
+        description: "Execute a shell command",
         inputSchema: {
           type: "object",
           properties: {
-            title: {
+            command: {
               type: "string",
-              description: "Title of the note"
+              description: "The command to run"
             },
-            content: {
-              type: "string",
-              description: "Text content of the note"
-            }
           },
-          required: ["title", "content"]
+          required: ["command"]
         }
       }
     ]
@@ -88,20 +82,15 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
  */
 server.setRequestHandler(CallToolRequestSchema, async (request) => {
   switch (request.params.name) {
-    case "create_note": {
-      const title = String(request.params.arguments?.title);
-      const content = String(request.params.arguments?.content);
-      if (!title || !content) {
-        throw new Error("Title and content are required");
-      }
-
-      const id = String(Object.keys(notes).length + 1);
-      notes[id] = { title, content };
+    case "execute_shell_command": {
+      let executor = new CommandExecutor()
+      const command = String(request.params.arguments?.command)
+      const output = await executor.executeCommand(command)
 
       return {
         content: [{
           type: "text",
-          text: `Created note ${id}: ${title}`
+          text: `Command output:\n${output}`
         }]
       };
     }
