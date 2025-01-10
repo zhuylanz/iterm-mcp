@@ -7,6 +7,27 @@ iterm-mcp will attempt to execute commands in the currently active tab of iTerm.
 ### Tools
 - `execute_shell_command` - Executes a command in the current iTerm session
 
+## Installation
+
+To use with Claude Desktop, add the server config:
+
+On MacOS: `~/Library/Application Support/Claude/claude_desktop_config.json`
+On Windows: `%APPDATA%/Claude/claude_desktop_config.json`
+
+```json
+{
+  "mcpServers": {
+    "iterm-mcp": {
+      "command": "npx",
+      "args": [
+        "-y",
+        "iterm-mcp"
+      ]
+    }
+  }
+}
+```
+
 ## Development
 
 Install dependencies:
@@ -22,23 +43,6 @@ yarn run build
 For development with auto-rebuild:
 ```bash
 yarn run watch
-```
-
-## Installation
-
-To use with Claude Desktop, build the project with `yarn run build`, and add the server config:
-
-On MacOS: `~/Library/Application Support/Claude/claude_desktop_config.json`
-On Windows: `%APPDATA%/Claude/claude_desktop_config.json`
-
-```json
-{
-  "mcpServers": {
-    "iterm-mcp": {
-      "command": "/path/to/iterm-mcp/build/index.js"
-    }
-  }
-}
 ```
 
 ### Debugging

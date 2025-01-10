@@ -60,7 +60,7 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
     tools: [
       {
         name: "execute_shell_command",
-        description: "Execute a shell command",
+        description: "Execute a shell command in the active iIterm session",
         inputSchema: {
           type: "object",
           properties: {
