@@ -2,7 +2,7 @@
 
 A Model Context Protocol server that provides access to the current iTerm session
 
-iterm-mcp will attempt to execute commands in the currently active tab of iTerm. 
+iterm-mcp will execute commands in the currently active tab of iTerm. 
 
 ### Tools
 - `execute_shell_command` - Executes a command in the current iTerm session
