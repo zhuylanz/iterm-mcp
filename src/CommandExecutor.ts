@@ -7,16 +7,7 @@ class CommandExecutor {
   async isProcessing(): Promise<boolean> {
     const ascript = `
       tell application "iTerm2"
-        activate
-        if windows is equal to {} then
-          create window with default profile
-        end if
-        
         tell front window
-          if current session of current tab is missing value then
-            create tab with default profile
-          end if
-          
           tell current session of current tab
             return is processing
           end tell
@@ -28,23 +19,31 @@ class CommandExecutor {
       const { stdout } = await execPromise(`osascript -e '${ascript}'`);
       return stdout.trim() === 'true';
     } catch (error) {
+      console.error('Processing check error:', error);
       throw new Error(`Failed to check processing status: ${error}`);
     }
   }
 
   async executeCommand(command: string): Promise<string> {
+    // First get the current contents
+    const getInitialContent = `
+      tell application "iTerm2"
+        tell front window
+          tell current session of current tab
+            set initialContent to contents
+            return initialContent
+          end tell
+        end tell
+      end tell
+    `;
+
+    const { stdout: initialContent } = await execPromise(`osascript -e '${getInitialContent}'`);
+    const initialLength = initialContent.length;
+
+    // Execute the command
     const ascript = `
       tell application "iTerm2"
-        activate
-        if windows is equal to {} then
-          create window with default profile
-        end if
-        
         tell front window
-          if current session of current tab is missing value then
-            create tab with default profile
-          end if
-          
           tell current session of current tab
             write text "${command.replace(/"/g, '\\"')}"
           end tell
@@ -52,29 +51,42 @@ class CommandExecutor {
       end tell
     `;
 
-    await execPromise(`osascript -e '${ascript}'`);
-    
-    // Wait until command completes
-    while (await this.isProcessing()) {
-      await new Promise(resolve => setTimeout(resolve, 100));
-    }
-    
-    // Get final output, but only the visible rows
-    const getOutput = `
-      tell application "iTerm2"
-        tell front window
-          tell current session of current tab
-            set rowCount to number of rows
-            set contentText to contents
-            set visibleContent to text 1 thru (rowCount * 200) of contentText
-            return visibleContent
+    try {
+      await execPromise(`osascript -e '${ascript}'`);
+      
+      // Wait until command completes
+      let retryCount = 0;
+      while (await this.isProcessing()) {
+        if (retryCount > 100) { // 10 second timeout
+          throw new Error('Command execution timed out');
+        }
+        await new Promise(resolve => setTimeout(resolve, 100));
+        retryCount++;
+      }
+      
+      // Give a small delay for output to settle
+      await new Promise(resolve => setTimeout(resolve, 200));
+      
+      // Get final content
+      const getFinalContent = `
+        tell application "iTerm2"
+          tell front window
+            tell current session of current tab
+              return contents
+            end tell
           end tell
         end tell
-      end tell
-    `;
-    
-    const { stdout } = await execPromise(`osascript -e '${getOutput}'`);
-    return stdout;
+      `;
+      
+      const { stdout: finalContent } = await execPromise(`osascript -e '${getFinalContent}'`);
+      
+      // Return only the new content
+      return finalContent.substring(initialLength).trim();
+
+    } catch (error) {
+      console.error('Command execution error:', error);
+      throw new Error(`Failed to execute command: ${error}`);
+    }
   }
 }
 
