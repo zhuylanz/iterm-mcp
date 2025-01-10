@@ -1,4 +1,5 @@
 # iterm-mcp 
+[![smithery badge](https://smithery.ai/badge/iterm-mcp)](https://smithery.ai/server/iterm-mcp)
 
 A Model Context Protocol server that provides access to the current iTerm session
 
@@ -8,6 +9,15 @@ iterm-mcp will execute commands in the currently active tab of iTerm.
 - `execute_shell_command` - Executes a command in the current iTerm session
 
 ## Installation
+
+
+### Installing via Smithery
+
+To install iTerm for Claude Desktop automatically via [Smithery](https://smithery.ai/server/iterm-mcp):
+
+```bash
+npx -y @smithery/cli install iterm-mcp --client claude
+```
 
 To use with Claude Desktop, add the server config:
 
