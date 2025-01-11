@@ -55,13 +55,8 @@ class CommandExecutor {
       await execPromise(`osascript -e '${ascript}'`);
       
       // Wait until command completes
-      let retryCount = 0;
       while (await this.isProcessing()) {
-        if (retryCount > 100) { // 10 second timeout
-          throw new Error('Command execution timed out');
-        }
         await new Promise(resolve => setTimeout(resolve, 100));
-        retryCount++;
       }
       
       // Give a small delay for output to settle
