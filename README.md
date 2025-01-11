@@ -5,6 +5,8 @@ A Model Context Protocol server that provides access to the current iTerm sessio
 
 iterm-mcp will execute commands in the currently active tab of iTerm. 
 
+<a href="https://glama.ai/mcp/servers/h89lr05ty6"><img width="380" height="200" src="https://glama.ai/mcp/servers/h89lr05ty6/badge" alt="iTerm Server MCP server" /></a>
+
 ### Tools
 - `execute_shell_command` - Executes a command in the current iTerm session
 
