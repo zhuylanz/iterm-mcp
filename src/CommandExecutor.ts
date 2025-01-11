@@ -25,21 +25,6 @@ class CommandExecutor {
   }
 
   async executeCommand(command: string): Promise<string> {
-    // First get the current contents
-    const getInitialContent = `
-      tell application "iTerm2"
-        tell front window
-          tell current session of current tab
-            set initialContent to contents
-            return initialContent
-          end tell
-        end tell
-      end tell
-    `;
-
-    const { stdout: initialContent } = await execPromise(`osascript -e '${getInitialContent}'`);
-    const initialLength = initialContent.length;
-
     // Execute the command
     const ascript = `
       tell application "iTerm2"
@@ -52,6 +37,9 @@ class CommandExecutor {
     `;
 
     try {
+      // Retrieve the buffer before executing the command
+      const initialBuffer = await this.retrieveBuffer();
+
       await execPromise(`osascript -e '${ascript}'`);
       
       // Wait until command completes
@@ -62,26 +50,54 @@ class CommandExecutor {
       // Give a small delay for output to settle
       await new Promise(resolve => setTimeout(resolve, 200));
       
-      // Get final content
-      const getFinalContent = `
-        tell application "iTerm2"
-          tell front window
-            tell current session of current tab
-              return contents
-            end tell
-          end tell
-        end tell
-      `;
+      const afterCommandBuffer = await this.retrieveBuffer();
       
-      const { stdout: finalContent } = await execPromise(`osascript -e '${getFinalContent}'`);
+      // Extract only the new content by comparing buffers
+      const commandOutput = this.extractCommandOutput(initialBuffer, afterCommandBuffer, command);
       
-      // Return only the new content
-      return finalContent.substring(initialLength).trim();
+      return commandOutput;
 
     } catch (error) {
       console.error('Command execution error:', error);
       throw new Error(`Failed to execute command: ${error}`);
     }
+  }
+
+  private async retrieveBuffer(): Promise<string> {
+    const ascript = `
+      tell application "iTerm2"
+        tell front window
+          tell current session of current tab
+            set numRows to number of rows
+            set allContent to contents
+            return allContent
+          end tell
+        end tell
+      end tell
+    `;
+    
+    const { stdout: finalContent } = await execPromise(`osascript -e '${ascript}'`);
+    return finalContent.trim();
+  }
+
+  private extractCommandOutput(initialBuffer: string, afterBuffer: string, command: string): string {
+    // Split buffers into lines
+    const initialLines = initialBuffer.split('\n');
+    const afterLines = afterBuffer.split('\n');
+    
+    // Find the command line in the after buffer by looking for partial match
+    // This handles cases where the command might have terminal formatting or leading characters
+    const commandLineIndex = afterLines.findIndex(line => 
+      line.includes(command.substring(1)) // Look for command without first character
+    );
+    
+    if (commandLineIndex === -1) {
+      // If command line not found, return difference between buffers
+      return afterLines.slice(initialLines.length).join('\n');
+    }
+
+    // Return everything after the command line
+    return afterLines.slice(commandLineIndex + 1).join('\n');
   }
 }
 

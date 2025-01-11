@@ -1,3 +1,5 @@
+![Main Image](.github/images/robot-hand.jpg)
+
 # iterm-mcp 
 [![smithery badge](https://smithery.ai/badge/iterm-mcp)](https://smithery.ai/server/iterm-mcp)
 
