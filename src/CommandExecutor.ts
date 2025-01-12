@@ -1,7 +1,11 @@
 import { exec } from 'node:child_process';
 import { promisify } from 'node:util';
+import { openSync, closeSync } from 'node:fs';
+import { isatty } from 'node:tty';
+import TTYProcessTracker from './TTYProcessTracker.js';
 
 const execPromise = promisify(exec);
+const sleep = promisify(setTimeout);
 
 class CommandExecutor {
   async isProcessing(): Promise<boolean> {
@@ -18,9 +22,9 @@ class CommandExecutor {
     try {
       const { stdout } = await execPromise(`osascript -e '${ascript}'`);
       return stdout.trim() === 'true';
-    } catch (error) {
-      console.error('Processing check error:', error);
-      throw new Error(`Failed to check processing status: ${error}`);
+    } catch (error: unknown) {
+      console.error('Processing check error:', (error as Error).message);
+      throw new Error(`Failed to check processing status: ${(error as Error).message}`);
     }
   }
 
@@ -42,11 +46,16 @@ class CommandExecutor {
 
       await execPromise(`osascript -e '${ascript}'`);
       
-      // Wait until command completes
+      // Wait until iterm reports that processing is done
       while (await this.isProcessing()) {
         await new Promise(resolve => setTimeout(resolve, 100));
       }
       
+      const ttyPath = await this.retrieveTtyPath();
+      while (await this.isWaitingForUserInput(ttyPath) == false) {
+        await new Promise(resolve => setTimeout(resolve, 100));
+      }
+
       // Give a small delay for output to settle
       await new Promise(resolve => setTimeout(resolve, 200));
       
@@ -57,9 +66,64 @@ class CommandExecutor {
       
       return commandOutput;
 
-    } catch (error) {
-      console.error('Command execution error:', error);
-      throw new Error(`Failed to execute command: ${error}`);
+    } catch (error: unknown) {
+      console.error('Command execution error:', (error as Error).message);
+      throw new Error(`Failed to execute command: ${(error as Error).message}`);
+    }
+  }
+
+  async isWaitingForUserInput(ttyPath:string): Promise<boolean> {
+    let fd;
+    try {
+        // Open the TTY file descriptor in non-blocking mode
+        fd = openSync(ttyPath, 'r');
+        const tracker = new TTYProcessTracker();
+        let belowThresholdTime = 0;
+        
+        while (true) {
+            try {
+                const isTTY = isatty(fd);
+                const activeProcess = await tracker.getActiveProcess(ttyPath);
+                
+                // Removed console logging
+                // console.log(`TTY Status:
+                // - Path: ${ttyPath}
+                // - Is TTY: ${isTTY}`);
+
+                if (!activeProcess) return true;
+
+                if (activeProcess) {
+                    // Removed console logging
+                    // console.log(`Active process:
+                    // - Name: ${activeProcess.name}
+                    // - Command: ${activeProcess.command}
+                    // - Command Chain: ${activeProcess.commandChain}
+                    // - Total CPU: ${activeProcess.metrics.totalCPUPercent.toFixed(1)}%
+                    // - Total Memory: ${activeProcess.metrics.totalMemoryMB.toFixed(1)} MB`);
+
+                    // return true if active process cpu < 1% for 2 seconds
+                    if (activeProcess.metrics.totalCPUPercent < 1) {
+                      belowThresholdTime += 350;
+                      if (belowThresholdTime >= 1000) return true;
+                    } else {
+                      belowThresholdTime = 0;
+                    }
+                }
+
+            } catch (checkError: unknown) {
+                console.error('Check error:', (checkError as Error).message);
+            }
+
+            await sleep(350);
+        }
+    } catch (error: unknown) {
+        //console.error('Error:', (error as Error).message);
+        return true;
+    } finally {
+        if (fd !== undefined) {
+            closeSync(fd);
+        }
+        return true;
     }
   }
 
@@ -72,6 +136,19 @@ class CommandExecutor {
             set allContent to contents
             return allContent
           end tell
+        end tell
+      end tell
+    `;
+    
+    const { stdout: finalContent } = await execPromise(`osascript -e '${ascript}'`);
+    return finalContent.trim();
+  }
+
+  private async retrieveTtyPath(): Promise<string> {
+    const ascript = `
+      tell application "iTerm2"
+        tell current session of current window
+          get tty
         end tell
       end tell
     `;
