@@ -82,18 +82,12 @@ class CommandExecutor {
         
         while (true) {
             try {
-                const isTTY = isatty(fd);
                 const activeProcess = await tracker.getActiveProcess(ttyPath);
                 
-                // Removed console logging
-                // console.log(`TTY Status:
-                // - Path: ${ttyPath}
                 // - Is TTY: ${isTTY}`);
-
                 if (!activeProcess) return true;
 
                 if (activeProcess) {
-                    // Removed console logging
                     // console.log(`Active process:
                     // - Name: ${activeProcess.name}
                     // - Command: ${activeProcess.command}
