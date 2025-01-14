@@ -1,4 +1,4 @@
-![Main Image](.github/images/demo.png)
+![Main Image](.github/images/demo.gif)
 
 # iterm-mcp 
 [![smithery badge](https://smithery.ai/badge/iterm-mcp)](https://smithery.ai/server/iterm-mcp)
