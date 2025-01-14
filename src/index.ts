@@ -16,7 +16,7 @@ import {
   ListToolsRequestSchema,
 } from "@modelcontextprotocol/sdk/types.js";
 import CommandExecutor from "./CommandExecutor.js";
-
+import TtyOutputReader from "./TtyOutputReader.js";
 
 /**
  * Type alias for a note object.
@@ -50,7 +50,6 @@ const server = new Server(
   }
 );
 
-
 /**
  * Handler that lists available tools.
  * Exposes a single "create_note" tool that lets clients create new notes.
@@ -59,17 +58,31 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
   return {
     tools: [
       {
-        name: "execute_shell_command",
-        description: "Execute a shell command in the active iIterm session",
+        name: "write_to_terminal",
+        description: "Writes text to the active iTerm terminal - often used to run a command in the terminal",
         inputSchema: {
           type: "object",
           properties: {
             command: {
               type: "string",
-              description: "The command to run"
+              description: "The command to run or text to write to the terminal"
             },
           },
           required: ["command"]
+        }
+      },
+      {
+        name: "read_terminal_output",
+        description: "Reads the output from the active iTerm terminal",
+        inputSchema: {
+          type: "object",
+          properties: {
+            linesOfOutput: {
+              type: "number",
+              description: "The number of lines of output to read. Default is the most recent 25 lines of output"
+            },
+          },
+          required: ["linesOfOutput"]
         }
       }
     ]
@@ -82,7 +95,7 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
  */
 server.setRequestHandler(CallToolRequestSchema, async (request) => {
   switch (request.params.name) {
-    case "execute_shell_command": {
+    case "write_to_terminal": {
       let executor = new CommandExecutor()
       const command = String(request.params.arguments?.command)
       const output = await executor.executeCommand(command)
@@ -94,7 +107,17 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
         }]
       };
     }
+    case "read_terminal_output": {
+      const linesOfOutput = Number(request.params.arguments?.linesOfOutput) || 25
+      const output = await TtyOutputReader.call(linesOfOutput)
 
+      return {
+        content: [{
+          type: "text",
+          text: output
+        }]
+      };
+    }
     default:
       throw new Error("Unknown tool");
   }
