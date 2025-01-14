@@ -1,4 +1,4 @@
-![Main Image](.github/images/robot-hand.jpg)
+![Main Image](.github/images/demo.png)
 
 # iterm-mcp 
 [![smithery badge](https://smithery.ai/badge/iterm-mcp)](https://smithery.ai/server/iterm-mcp)
@@ -10,7 +10,8 @@ iterm-mcp will execute commands in the currently active tab of iTerm.
 <a href="https://glama.ai/mcp/servers/h89lr05ty6"><img width="380" height="200" src="https://glama.ai/mcp/servers/h89lr05ty6/badge" alt="iTerm Server MCP server" /></a>
 
 ### Tools
-- `execute_shell_command` - Executes a command in the current iTerm session
+- `write_to_terminal` - Writes to the active iTerm terminal - often used to run a command
+- `read_terminal_output` - Reads the output from the active iTerm terminal
 
 ## Installation
 
