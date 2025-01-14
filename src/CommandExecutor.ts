@@ -3,6 +3,7 @@ import { promisify } from 'node:util';
 import { openSync, closeSync } from 'node:fs';
 import { isatty } from 'node:tty';
 import TTYProcessTracker from './TTYProcessTracker.js';
+import TtyOutputReader from './TtyOutputReader.js';
 
 const execPromise = promisify(exec);
 const sleep = promisify(setTimeout);
@@ -42,7 +43,7 @@ class CommandExecutor {
 
     try {
       // Retrieve the buffer before executing the command
-      const initialBuffer = await this.retrieveBuffer();
+      const initialBuffer = await TtyOutputReader.retrieveBuffer();
 
       await execPromise(`osascript -e '${ascript}'`);
       
@@ -59,7 +60,7 @@ class CommandExecutor {
       // Give a small delay for output to settle
       await new Promise(resolve => setTimeout(resolve, 200));
       
-      const afterCommandBuffer = await this.retrieveBuffer();
+      const afterCommandBuffer = await TtyOutputReader.retrieveBuffer();
       
       // Extract only the new content by comparing buffers
       const commandOutput = this.extractCommandOutput(initialBuffer, afterCommandBuffer, command);
@@ -119,23 +120,6 @@ class CommandExecutor {
         }
         return true;
     }
-  }
-
-  private async retrieveBuffer(): Promise<string> {
-    const ascript = `
-      tell application "iTerm2"
-        tell front window
-          tell current session of current tab
-            set numRows to number of rows
-            set allContent to contents
-            return allContent
-          end tell
-        end tell
-      end tell
-    `;
-    
-    const { stdout: finalContent } = await execPromise(`osascript -e '${ascript}'`);
-    return finalContent.trim();
   }
 
   private async retrieveTtyPath(): Promise<string> {
