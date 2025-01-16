@@ -10,6 +10,7 @@ iterm-mcp will execute commands in the currently active tab of iTerm.
 ### Tools
 - `write_to_terminal` - Writes to the active iTerm terminal - often used to run a command
 - `read_terminal_output` - Reads the output from the active iTerm terminal
+- `send_control_character` - Sends a control character to the active iTerm terminal
 
 ## Installation
 
