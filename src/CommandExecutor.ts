@@ -2,7 +2,7 @@ import { exec } from 'node:child_process';
 import { promisify } from 'node:util';
 import { openSync, closeSync } from 'node:fs';
 import { isatty } from 'node:tty';
-import TTYProcessTracker from './TTYProcessTracker.js';
+import ProcessTracker from './ProcessTracker.js';
 import TtyOutputReader from './TtyOutputReader.js';
 
 const execPromise = promisify(exec);
@@ -78,7 +78,7 @@ class CommandExecutor {
     try {
         // Open the TTY file descriptor in non-blocking mode
         fd = openSync(ttyPath, 'r');
-        const tracker = new TTYProcessTracker();
+        const tracker = new ProcessTracker();
         let belowThresholdTime = 0;
         
         while (true) {

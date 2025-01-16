@@ -42,7 +42,7 @@ interface ActiveProcess {
   metrics: ProcessMetrics;
 }
 
-class TTYProcessTracker {
+class ProcessTracker {
   private readonly shellNames = new Set(['bash', 'zsh', 'sh', 'fish', 'csh', 'tcsh']);
   private readonly replNames = new Set(['irb', 'pry', 'rails', 'node', 'python', 'ipython']);
   
@@ -395,7 +395,7 @@ class TTYProcessTracker {
 
 // Example usage
 async function main() {
-  const tracker = new TTYProcessTracker();
+  const tracker = new ProcessTracker();
   const ttyPath = '/dev/ttys001'; // Example TTY path
   
   const process = await tracker.getActiveProcess(ttyPath);
@@ -426,4 +426,4 @@ async function main() {
   }
 }
 
-export default TTYProcessTracker;
+export default ProcessTracker;
