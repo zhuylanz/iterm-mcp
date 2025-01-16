@@ -1,14 +1,5 @@
 #!/usr/bin/env node
 
-/**
- * This is a template MCP server that implements a simple notes system.
- * It demonstrates core MCP concepts like resources and tools by allowing:
- * - Listing notes as resources
- * - Reading individual notes
- * - Creating new notes via a tool
- * - Summarizing all notes via a prompt
- */
-
 import { Server } from "@modelcontextprotocol/sdk/server/index.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import {
@@ -17,25 +8,8 @@ import {
 } from "@modelcontextprotocol/sdk/types.js";
 import CommandExecutor from "./CommandExecutor.js";
 import TtyOutputReader from "./TtyOutputReader.js";
+import SendControlCharacter from "./SendControlCharacter.js";
 
-/**
- * Type alias for a note object.
- */
-type Note = { title: string, content: string };
-
-/**
- * Simple in-memory storage for notes.
- * In a real implementation, this would likely be backed by a database.
- */
-const notes: { [id: string]: Note } = {
-  "1": { title: "First Note", content: "This is note 1" },
-  "2": { title: "Second Note", content: "This is note 2" }
-};
-
-/**
- * Create an MCP server with capabilities for resources (to list/read notes),
- * tools (to create new notes), and prompts (to summarize notes).
- */
 const server = new Server(
   {
     name: "iterm-mcp",
@@ -43,17 +17,11 @@ const server = new Server(
   },
   {
     capabilities: {
-      //resources: {},
       tools: {},
-      //prompts: {},
     },
   }
 );
 
-/**
- * Handler that lists available tools.
- * Exposes a single "create_note" tool that lets clients create new notes.
- */
 server.setRequestHandler(ListToolsRequestSchema, async () => {
   return {
     tools: [
@@ -84,15 +52,25 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
           },
           required: ["linesOfOutput"]
         }
+      },
+      {
+        name: "send_control_character",
+        description: "Sends a control character to the active iTerm terminal (e.g., Control-C)",
+        inputSchema: {
+          type: "object",
+          properties: {
+            letter: {
+              type: "string",
+              description: "The letter corresponding to the control character (e.g., 'C' for Control-C)"
+            },
+          },
+          required: ["letter"]
+        }
       }
     ]
   };
 });
 
-/**
- * Handler for the create_note tool.
- * Creates a new note with the provided title and content, and returns success message.
- */
 server.setRequestHandler(CallToolRequestSchema, async (request) => {
   switch (request.params.name) {
     case "write_to_terminal": {
@@ -118,15 +96,23 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
         }]
       };
     }
+    case "send_control_character": {
+      const ttyControl = new SendControlCharacter();
+      const letter = String(request.params.arguments?.letter);
+      await ttyControl.send(letter);
+      
+      return {
+        content: [{
+          type: "text",
+          text: `Sent control character: Control-${letter.toUpperCase()}`
+        }]
+      };
+    }
     default:
       throw new Error("Unknown tool");
   }
 });
 
-/**
- * Start the server using stdio transport.
- * This allows the server to communicate via standard input/output streams.
- */
 async function main() {
   const transport = new StdioServerTransport();
   await server.connect(transport);
