@@ -30,12 +30,17 @@ class CommandExecutor {
   }
 
   async executeCommand(command: string): Promise<string> {
-    // Execute the command
+    // Escape backslashes and double quotes in the command string
+    const escapedCommand = command
+      .replace(/\\/g, '\\\\')
+      .replace(/"/g, '\\"')
+      .replace(/'/g, "'\\''");
+
     const ascript = `
       tell application "iTerm2"
         tell front window
           tell current session of current tab
-            write text "${command.replace(/"/g, '\\"')}"
+            write text "${escapedCommand}"
           end tell
         end tell
       end tell
