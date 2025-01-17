@@ -5,7 +5,7 @@ import ProcessTracker from './ProcessTracker.js';
 import TtyOutputReader from './TtyOutputReader.js';
 
 const execPromise = promisify(exec);
-const sleep = promisify(setTimeout);
+const sleep = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
 
 class CommandExecutor {
   async isProcessing(): Promise<boolean> {
@@ -19,12 +19,8 @@ class CommandExecutor {
   }
 
   async executeCommand(command: string): Promise<string> {
-    // Escape backslashes and double quotes in the command string
-    const escapedCommand = command
-      .replace(/\\/g, '\\\\')
-      .replace(/"/g, '\\"')
-      .replace(/'/g, "'\\''");
-
+    const escapedCommand = this.escapeForAppleScript(command);
+    
     try {
       // Retrieve the buffer before executing the command
       const initialBuffer = await TtyOutputReader.retrieveBuffer();
@@ -34,23 +30,21 @@ class CommandExecutor {
       
       // Wait until iterm reports that processing is done
       while (await this.isProcessing()) {
-        await new Promise(resolve => setTimeout(resolve, 100));
+        await sleep(100);
       }
       
       const ttyPath = await this.retrieveTtyPath();
       while (await this.isWaitingForUserInput(ttyPath) === false) {
-        await new Promise(resolve => setTimeout(resolve, 100));
+        await sleep(100);
       }
 
       // Give a small delay for output to settle
-      await new Promise(resolve => setTimeout(resolve, 200));
+      await sleep(200);
       
       const afterCommandBuffer = await TtyOutputReader.retrieveBuffer();
       
       // Extract only the new content by comparing buffers
-      const commandOutput = this.extractCommandOutput(initialBuffer, afterCommandBuffer, command);
-      
-      return commandOutput;
+      return this.extractCommandOutput(initialBuffer, afterCommandBuffer, command);
 
     } catch (error: unknown) {
       console.error('Command execution error:', (error as Error).message);
@@ -72,13 +66,11 @@ class CommandExecutor {
           
           if (!activeProcess) return true;
 
-          if (activeProcess) {
-            if (activeProcess.metrics.totalCPUPercent < 1) {
-              belowThresholdTime += 350;
-              if (belowThresholdTime >= 1000) return true;
-            } else {
-              belowThresholdTime = 0;
-            }
+          if (activeProcess.metrics.totalCPUPercent < 1) {
+            belowThresholdTime += 350;
+            if (belowThresholdTime >= 1000) return true;
+          } else {
+            belowThresholdTime = 0;
           }
 
         } catch (checkError: unknown) {
@@ -97,6 +89,24 @@ class CommandExecutor {
     }
   }
 
+  private escapeForAppleScript(str: string): string {
+    // First, escape any backslashes
+    str = str.replace(/\\/g, '\\\\');
+    
+    // Escape double quotes
+    str = str.replace(/"/g, '\\"');
+    
+    // Handle single quotes by breaking out of the quote, escaping the quote, and going back in
+    str = str.replace(/'/g, "'\\''");
+    
+    // Handle special characters
+    str = str.replace(/[^\x20-\x7E]/g, (char) => {
+      return '\\u' + char.charCodeAt(0).toString(16).padStart(4, '0');
+    });
+    
+    return str;
+  }
+
   private async retrieveTtyPath(): Promise<string> {
     try {
       const { stdout } = await execPromise(`/usr/bin/osascript -e 'tell application "iTerm2" to tell current session of current window to get tty'`);
@@ -113,8 +123,7 @@ class CommandExecutor {
     const afterLines = afterBuffer.split('\n');
     
     // Find the command line in the after buffer by looking for partial match
-    // This handles cases where the command might have terminal formatting or leading characters
-    const commandLineIndex = afterLines.findIndex(line => 
+    const commandLineIndex = afterLines.findIndex(line =>
       line.includes(command.substring(1)) // Look for command without first character
     );
     
