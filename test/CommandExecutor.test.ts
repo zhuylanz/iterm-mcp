@@ -2,8 +2,9 @@ import CommandExecutor from '../src/CommandExecutor.js';
 
 async function testExecuteCommand() {
   const executor = new CommandExecutor();
-  const command = process.argv[2] || 'date';
-
+  // Combine all arguments after the script name into a single command
+  const command = process.argv.slice(2).join(' ') || 'date';
+  
   try {
     const output = await executor.executeCommand(command);
     console.log('Command Output:', output);
