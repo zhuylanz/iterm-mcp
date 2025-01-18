@@ -9,21 +9,6 @@ const execPromise = promisify(exec);
 const sleep = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
 
 class CommandExecutor {
-  private logPath: string;
-
-  constructor() {
-    this.logPath = '/users/ferrislucas/iterm-mcp/logs/debug.log';
-  }
-
-  async isProcessing(): Promise<boolean> {
-    try {
-      const { stdout } = await execPromise(`/usr/bin/osascript -e 'tell application "iTerm2" to tell current session of current window to get is processing'`);
-      return stdout.trim() === 'true';
-    } catch (error: unknown) {
-      throw new Error(`Failed to check processing status: ${(error as Error).message}`);
-    }
-  }
-
   async executeCommand(command: string): Promise<string> {
     const escapedCommand = this.escapeForAppleScript(command);
     
@@ -204,6 +189,15 @@ class CommandExecutor {
     const result = uniqueLines.join('\n');
     
     return result;
+  }
+
+  private async isProcessing(): Promise<boolean> {
+    try {
+      const { stdout } = await execPromise(`/usr/bin/osascript -e 'tell application "iTerm2" to tell current session of current window to get is processing'`);
+      return stdout.trim() === 'true';
+    } catch (error: unknown) {
+      throw new Error(`Failed to check processing status: ${(error as Error).message}`);
+    }
   }
 }
 

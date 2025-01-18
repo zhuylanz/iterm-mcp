@@ -70,7 +70,7 @@ Since MCP servers communicate over stdio, debugging can be challenging. We recom
 
 ```bash
 yarn run inspector
-yarn ts-node --esm test/CommandExecutor.test.ts
+yarn debug 
 ```
 
 The Inspector will provide a URL to access debugging tools in your browser.
