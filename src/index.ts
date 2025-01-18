@@ -81,7 +81,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
       return {
         content: [{
           type: "text",
-          text: `Command output:\n${output}`
+          text: `Command output visible in the terminal:\n${output}`
         }]
       };
     }
