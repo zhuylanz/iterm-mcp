@@ -5,6 +5,7 @@ A Model Context Protocol server that provides access to your iTerm session.
 
 ### Features
 
+- **Efficient Token Use**: Only the visible content of the terminal is passed to the model. The model can retrieve content that's not visible if necessary.
 - **Supports Long-Running Processes**: iterm-mcp knows when the terminal is waiting for user input. Long-running processes are handled gracefully.
 - **Interrupt When Needed**: Send control characters to the terminal to interrupt processes.
 - **Inspect Terminal Activity**: Gives the model visibility into the current terminal content.
@@ -69,6 +70,7 @@ Since MCP servers communicate over stdio, debugging can be challenging. We recom
 
 ```bash
 yarn run inspector
+yarn ts-node --esm test/CommandExecutor.test.ts
 ```
 
 The Inspector will provide a URL to access debugging tools in your browser.

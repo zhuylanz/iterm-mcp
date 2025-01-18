@@ -1,6 +1,7 @@
 import { exec } from 'node:child_process';
 import { promisify } from 'node:util';
-import { openSync, closeSync } from 'node:fs';
+import { openSync, closeSync, appendFileSync, writeFileSync, existsSync } from 'node:fs';
+import { join } from 'node:path';
 import ProcessTracker from './ProcessTracker.js';
 import TtyOutputReader from './TtyOutputReader.js';
 
@@ -8,12 +9,17 @@ const execPromise = promisify(exec);
 const sleep = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
 
 class CommandExecutor {
+  private logPath: string;
+
+  constructor() {
+    this.logPath = '/users/ferrislucas/iterm-mcp/logs/debug.log';
+  }
+
   async isProcessing(): Promise<boolean> {
     try {
       const { stdout } = await execPromise(`/usr/bin/osascript -e 'tell application "iTerm2" to tell current session of current window to get is processing'`);
       return stdout.trim() === 'true';
     } catch (error: unknown) {
-      console.error('Processing check error:', (error as Error).message);
       throw new Error(`Failed to check processing status: ${(error as Error).message}`);
     }
   }
@@ -42,12 +48,13 @@ class CommandExecutor {
       await sleep(200);
       
       const afterCommandBuffer = await TtyOutputReader.retrieveBuffer();
-      
+
       // Extract only the new content by comparing buffers
-      return this.extractCommandOutput(initialBuffer, afterCommandBuffer, command);
+      const output = this.extractCommandOutput(initialBuffer, afterCommandBuffer, command);
+      
+      return output;
 
     } catch (error: unknown) {
-      console.error('Command execution error:', (error as Error).message);
       throw new Error(`Failed to execute command: ${(error as Error).message}`);
     }
   }
@@ -73,8 +80,8 @@ class CommandExecutor {
             belowThresholdTime = 0;
           }
 
-        } catch (checkError: unknown) {
-          console.error('Check error:', (checkError as Error).message);
+        } catch {
+          return true;
         }
 
         await sleep(350);
@@ -112,28 +119,91 @@ class CommandExecutor {
       const { stdout } = await execPromise(`/usr/bin/osascript -e 'tell application "iTerm2" to tell current session of current window to get tty'`);
       return stdout.trim();
     } catch (error: unknown) {
-      console.error('TTY path retrieval error:', (error as Error).message);
       throw new Error(`Failed to retrieve TTY path: ${(error as Error).message}`);
     }
   }
 
+  private cleanTerminalOutput(buffer: string): string {
+    // Remove ANSI escape sequences
+    let cleaned = buffer.replace(/\x1b\[[0-9;]*[a-zA-Z]/g, '');
+    
+    // Handle carriage returns and line feeds properly
+    cleaned = cleaned.replace(/[^\n\r]+((\r+\n)|\r)[^\n\r]+/g, line => {
+      const parts = line.split(/\r+/);
+      return parts[parts.length - 1];
+    });
+
+    // Normalize line endings
+    cleaned = cleaned.replace(/\r\n/g, '\n');
+    
+    // Remove terminal control sequences
+    cleaned = cleaned.replace(/\x1b\][0-9;]*[a-zA-Z]/g, '');
+    
+    // Remove null characters
+    cleaned = cleaned.replace(/\x00/g, '');
+    
+    const result = cleaned.trim();
+    
+    return result;
+  }
+
+  private findCommandLine(lines: string[], command: string): number {
+    // Search from bottom up as the command might appear multiple times
+    for (let i = lines.length - 1; i >= 0; i--) {
+      const line = lines[i];
+      if (line.includes(command)) {
+        return i;
+      }
+    }
+    return -1;
+  }
+
+  private findNextPrompt(lines: string[], startIndex: number): number {
+    const promptPatterns = [
+      /[$#>]\s*$/,  // Basic shell prompts
+      /[a-zA-Z0-9_-]+@[a-zA-Z0-9_-]+:[~\w/]*[$#>]\s*$/  // Username@hostname style
+    ];
+
+    for (let i = startIndex; i < lines.length; i++) {
+      const line = lines[i].trim();
+      for (const pattern of promptPatterns) {
+        if (pattern.test(line)) {
+          return i;
+        }
+      }
+    }
+    return lines.length;
+  }
+
   private extractCommandOutput(initialBuffer: string, afterBuffer: string, command: string): string {
-    // Split buffers into lines
-    const initialLines = initialBuffer.split('\n');
-    const afterLines = afterBuffer.split('\n');
-    
-    // Find the command line in the after buffer by looking for partial match
-    const commandLineIndex = afterLines.findIndex(line =>
-      line.includes(command.substring(1)) // Look for command without first character
-    );
-    
+    // Clean both buffers
+    const cleanedInitial = this.cleanTerminalOutput(initialBuffer);
+    const cleanedAfter = this.cleanTerminalOutput(afterBuffer);
+
+    // Split into lines and remove empty lines
+    const initialLines = cleanedInitial.split('\n').filter(line => line.trim() !== '');
+    const afterLines = cleanedAfter.split('\n').filter(line => line.trim() !== '');
+
+    // Find the command line
+    const commandLineIndex = this.findCommandLine(afterLines, command);
     if (commandLineIndex === -1) {
-      // If command line not found, return difference between buffers
-      return afterLines.slice(initialLines.length).join('\n');
+      return '';
     }
 
-    // Return everything after the command line
-    return afterLines.slice(commandLineIndex + 1).join('\n');
+    // Find the next prompt after the command
+    const nextPromptIndex = this.findNextPrompt(afterLines, commandLineIndex + 1);
+
+    // Extract everything between command and next prompt
+    const outputLines = afterLines.slice(commandLineIndex + 1, nextPromptIndex)
+      .filter(line => line.trim() !== '');  // Remove empty lines
+
+    // Remove any lines that exist in the initial buffer
+    const initialSet = new Set(initialLines);
+    const uniqueLines = outputLines.filter(line => !initialSet.has(line.trim()));
+
+    const result = uniqueLines.join('\n');
+    
+    return result;
   }
 }
 
