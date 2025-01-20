@@ -7,7 +7,7 @@ export default class TtyOutputReader {
   static async call(linesOfOutput: number) {
     const buffer = await this.retrieveBuffer();
     const lines = buffer.split('\n');
-    return lines.slice(-linesOfOutput).join('\n');
+    return lines.slice(-linesOfOutput - 1).join('\n'); // Include the last line
   }
 
   static async retrieveBuffer(): Promise<string> {
