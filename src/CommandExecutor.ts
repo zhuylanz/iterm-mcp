@@ -4,6 +4,7 @@ import { openSync, closeSync, appendFileSync, writeFileSync, existsSync } from '
 import { join } from 'node:path';
 import ProcessTracker from './ProcessTracker.js';
 import TtyOutputReader from './TtyOutputReader.js';
+import { after } from 'node:test';
 
 const execPromise = promisify(exec);
 const sleep = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
@@ -33,7 +34,8 @@ class CommandExecutor {
       await sleep(200);
       
       const afterCommandBuffer = await TtyOutputReader.retrieveBuffer();
-
+      return afterCommandBuffer;
+      
       // Extract only the new content by comparing buffers
       const output = this.extractCommandOutput(initialBuffer, afterCommandBuffer, command);
       

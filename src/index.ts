@@ -47,7 +47,7 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
           properties: {
             linesOfOutput: {
               type: "number",
-              description: "The number of lines of output to read. Default is the most recent 25 lines of output"
+              description: "The number of lines of output to read."
             },
           },
           required: ["linesOfOutput"]
@@ -74,14 +74,19 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
 server.setRequestHandler(CallToolRequestSchema, async (request) => {
   switch (request.params.name) {
     case "write_to_terminal": {
-      let executor = new CommandExecutor()
-      const command = String(request.params.arguments?.command)
-      const output = await executor.executeCommand(command)
+      let executor = new CommandExecutor();
+      const command = String(request.params.arguments?.command);
+      const beforeCommandBuffer = await TtyOutputReader.retrieveBuffer();
+      const beforeCommandBufferLines = beforeCommandBuffer.split("\n").length;
+      await executor.executeCommand(command);
+      const afterCommandBuffer = await TtyOutputReader.retrieveBuffer();
+      const afterCommandBufferLines = afterCommandBuffer.split("\n").length;
+      const outputLines = afterCommandBufferLines - beforeCommandBufferLines
 
       return {
         content: [{
           type: "text",
-          text: `Command output visible in the terminal:\n${output}`
+          text: `The command was sent to the terminal. ${outputLines} lines were output after sending the command to the terminal. Read the last ${outputLines} lines of terminal contents to orient yourself.`
         }]
       };
     }
