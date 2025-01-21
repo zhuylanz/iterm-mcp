@@ -78,7 +78,9 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
       const command = String(request.params.arguments?.command);
       const beforeCommandBuffer = await TtyOutputReader.retrieveBuffer();
       const beforeCommandBufferLines = beforeCommandBuffer.split("\n").length;
+      
       await executor.executeCommand(command);
+      
       const afterCommandBuffer = await TtyOutputReader.retrieveBuffer();
       const afterCommandBufferLines = afterCommandBuffer.split("\n").length;
       const outputLines = afterCommandBufferLines - beforeCommandBufferLines
@@ -86,7 +88,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
       return {
         content: [{
           type: "text",
-          text: `The command was sent to the terminal. ${outputLines} lines were output after sending the command to the terminal. Read the last ${outputLines} lines of terminal contents to orient yourself.`
+          text: `${outputLines} lines were output after sending the command to the terminal. Read the last ${outputLines} lines of terminal contents to orient yourself. Never assume that the command was executed or that it was successful.`
         }]
       };
     }
