@@ -4,10 +4,13 @@ import { promisify } from 'node:util';
 const execPromise = promisify(exec);
 
 export default class TtyOutputReader {
-  static async call(linesOfOutput: number) {
+  static async call(linesOfOutput?: number) {
     const buffer = await this.retrieveBuffer();
+    if (!linesOfOutput) {
+      return buffer;
+    }
     const lines = buffer.split('\n');
-    return lines.slice(-linesOfOutput).join('\n');
+    return lines.slice(-linesOfOutput - 1).join('\n');
   }
 
   static async retrieveBuffer(): Promise<string> {
