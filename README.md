@@ -19,6 +19,10 @@ A Model Context Protocol server that provides access to your iTerm session.
 
 ## Installation
 
+### Requirements
+
+- Node.js 18 or higher
+
 To use with Claude Desktop, add the server config:
 
 On macOS: `~/Library/Application Support/Claude/claude_desktop_config.json`
