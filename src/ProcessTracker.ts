@@ -44,7 +44,10 @@ interface ActiveProcess {
 
 class ProcessTracker {
   private readonly shellNames = new Set(['bash', 'zsh', 'sh', 'fish', 'csh', 'tcsh']);
-  private readonly replNames = new Set(['irb', 'pry', 'rails', 'node', 'python', 'ipython']);
+  private readonly replNames = new Set([
+    'irb', 'pry', 'rails', 'node', 'python', 'ipython',
+    'scala', 'ghci', 'iex', 'lein', 'clj', 'julia', 'R', 'php', 'lua'
+  ]);
   
   /**
    * Get the active process and its resource usage in an iTerm tab
@@ -240,29 +243,28 @@ class ProcessTracker {
     let score = 0;
     
     // Base scores for process state
+    // 'R' (running) processes get 2 points, 'S' (sleeping) get 1 point
     score += process.state === 'R' ? 2 : process.state === 'S' ? 1 : 0;
     
     // CPU usage bonus
-    score += Math.min(process.cpuPercent / 10, 5); // Up to 5 points for CPU usage
+    // Add up to 5 points based on CPU usage percentage (1 point per 10%)
+    score += Math.min(process.cpuPercent / 10, 5);
     
     // Penalize shell processes unless they're the only option
+    // Shell processes are less interesting, so deduct 1 point
     if (this.shellNames.has(cmdName)) {
       score -= 1;
     }
     
     // Give high priority to REPL processes
-    if (cmd.includes('rails console') || 
-        cmd.includes('rails server') || 
-        this.replNames.has(cmdName)) {
+    // Add 3 points for REPLY processes
+    if (this.replNames.has(cmdName)) {
       score += 3;
     }
     
-    // Bonus for Ruby processes in a Rails context
-    if (cmdName === 'ruby' && cmd.includes('rails')) {
-      score += 2;
-    }
     
     // Bonus for active package manager operations
+    // Add 2 points for package managers like 'brew', 'npm', or 'yarn' if they are using CPU
     if ((cmdName === 'brew' || cmdName === 'npm' || cmdName === 'yarn') && 
         process.cpuPercent > 0) {
       score += 2;
