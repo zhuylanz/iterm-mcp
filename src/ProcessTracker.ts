@@ -44,7 +44,10 @@ interface ActiveProcess {
 
 class ProcessTracker {
   private readonly shellNames = new Set(['bash', 'zsh', 'sh', 'fish', 'csh', 'tcsh']);
-  private readonly replNames = new Set(['irb', 'pry', 'rails', 'node', 'python', 'ipython']);
+  private readonly replNames = new Set([
+    'irb', 'pry', 'rails', 'node', 'python', 'ipython',
+    'scala', 'ghci', 'iex', 'lein', 'clj', 'julia', 'R', 'php', 'lua'
+  ]);
   
   /**
    * Get the active process and its resource usage in an iTerm tab
@@ -254,18 +257,11 @@ class ProcessTracker {
     }
     
     // Give high priority to REPL processes
-    // Add 3 points for processes like 'rails console', 'rails server', or any REPL
-    if (cmd.includes('rails console') || 
-        cmd.includes('rails server') || 
-        this.replNames.has(cmdName)) {
+    // Add 3 points for REPLY processes
+    if (this.replNames.has(cmdName)) {
       score += 3;
     }
     
-    // Bonus for Ruby processes in a Rails context
-    // Add 2 points if the process is a Ruby process running Rails
-    if (cmdName === 'ruby' && cmd.includes('rails')) {
-      score += 2;
-    }
     
     // Bonus for active package manager operations
     // Add 2 points for package managers like 'brew', 'npm', or 'yarn' if they are using CPU
