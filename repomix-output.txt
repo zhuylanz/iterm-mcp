@@ -1,0 +1,1045 @@
+This file is a merged representation of the entire codebase, combined into a single document by Repomix.
+
+================================================================
+File Summary
+================================================================
+
+Purpose:
+--------
+This file contains a packed representation of the entire repository's contents.
+It is designed to be easily consumable by AI systems for analysis, code review,
+or other automated processes.
+
+File Format:
+------------
+The content is organized as follows:
+1. This summary section
+2. Repository information
+3. Directory structure
+4. Multiple file entries, each consisting of:
+  a. A separator line (================)
+  b. The file path (File: path/to/file)
+  c. Another separator line
+  d. The full contents of the file
+  e. A blank line
+
+Usage Guidelines:
+-----------------
+- This file should be treated as read-only. Any changes should be made to the
+  original repository files, not this packed version.
+- When processing this file, use the file path to distinguish
+  between different files in the repository.
+- Be aware that this file may contain sensitive information. Handle it with
+  the same level of security as you would the original repository.
+
+Notes:
+------
+- Some files may have been excluded based on .gitignore rules and Repomix's configuration
+- Binary files are not included in this packed representation. Please refer to the Repository Structure section for a complete list of file paths, including binary files
+- Files matching patterns in .gitignore are excluded
+- Files matching default ignore patterns are excluded
+
+Additional Info:
+----------------
+
+================================================================
+Directory Structure
+================================================================
+src/
+  CommandExecutor.ts
+  index.ts
+  ProcessTracker.ts
+  SendControlCharacter.ts
+  TtyOutputReader.ts
+test/
+  CommandExecutor.test.ts
+.gitignore
+LICENSE.md
+package.json
+README.md
+tsconfig.json
+
+================================================================
+Files
+================================================================
+
+================
+File: src/CommandExecutor.ts
+================
+import { exec } from 'node:child_process';
+import { promisify } from 'node:util';
+import { openSync, closeSync, appendFileSync, writeFileSync, existsSync } from 'node:fs';
+import { join } from 'node:path';
+import ProcessTracker from './ProcessTracker.js';
+import TtyOutputReader from './TtyOutputReader.js';
+import { after } from 'node:test';
+
+const execPromise = promisify(exec);
+const sleep = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
+
+class CommandExecutor {
+  async executeCommand(command: string): Promise<string> {
+    const escapedCommand = this.escapeForAppleScript(command);
+    
+    try {
+      await execPromise(`/usr/bin/osascript -e 'tell application "iTerm2" to tell current session of current window to write text "${escapedCommand}"'`);
+      
+      // Wait until iterm reports that processing is done
+      while (await this.isProcessing()) {
+        await sleep(100);
+      }
+      
+      const ttyPath = await this.retrieveTtyPath();
+      while (await this.isWaitingForUserInput(ttyPath) === false) {
+        await sleep(100);
+      }
+
+      // Give a small delay for output to settle
+      await sleep(200);
+      
+      const afterCommandBuffer = await TtyOutputReader.retrieveBuffer()
+      return afterCommandBuffer
+    } catch (error: unknown) {
+      throw new Error(`Failed to execute command: ${(error as Error).message}`);
+    }
+  }
+
+  async isWaitingForUserInput(ttyPath: string): Promise<boolean> {
+    let fd;
+    try {
+      // Open the TTY file descriptor in non-blocking mode
+      fd = openSync(ttyPath, 'r');
+      const tracker = new ProcessTracker();
+      let belowThresholdTime = 0;
+      
+      while (true) {
+        try {
+          const activeProcess = await tracker.getActiveProcess(ttyPath);
+          
+          if (!activeProcess) return true;
+
+          if (activeProcess.metrics.totalCPUPercent < 1) {
+            belowThresholdTime += 350;
+            if (belowThresholdTime >= 1000) return true;
+          } else {
+            belowThresholdTime = 0;
+          }
+
+        } catch {
+          return true;
+        }
+
+        await sleep(350);
+      }
+    } catch (error: unknown) {
+      return true;
+    } finally {
+      if (fd !== undefined) {
+        closeSync(fd);
+      }
+      return true;
+    }
+  }
+
+  private escapeForAppleScript(str: string): string {
+    // First, escape any backslashes
+    str = str.replace(/\\/g, '\\\\');
+    
+    // Escape double quotes
+    str = str.replace(/"/g, '\\"');
+    
+    // Handle single quotes by breaking out of the quote, escaping the quote, and going back in
+    str = str.replace(/'/g, "'\\''");
+    
+    // Handle special characters
+    str = str.replace(/[^\x20-\x7E]/g, (char) => {
+      return '\\u' + char.charCodeAt(0).toString(16).padStart(4, '0');
+    });
+    
+    return str;
+  }
+
+  private async retrieveTtyPath(): Promise<string> {
+    try {
+      const { stdout } = await execPromise(`/usr/bin/osascript -e 'tell application "iTerm2" to tell current session of current window to get tty'`);
+      return stdout.trim();
+    } catch (error: unknown) {
+      throw new Error(`Failed to retrieve TTY path: ${(error as Error).message}`);
+    }
+  }
+
+  private async isProcessing(): Promise<boolean> {
+    try {
+      const { stdout } = await execPromise(`/usr/bin/osascript -e 'tell application "iTerm2" to tell current session of current window to get is processing'`);
+      return stdout.trim() === 'true';
+    } catch (error: unknown) {
+      throw new Error(`Failed to check processing status: ${(error as Error).message}`);
+    }
+  }
+}
+
+export default CommandExecutor;
+
+================
+File: src/index.ts
+================
+#!/usr/bin/env node
+
+import { Server } from "@modelcontextprotocol/sdk/server/index.js";
+import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
+import {
+  CallToolRequestSchema,
+  ListToolsRequestSchema,
+} from "@modelcontextprotocol/sdk/types.js";
+import CommandExecutor from "./CommandExecutor.js";
+import TtyOutputReader from "./TtyOutputReader.js";
+import SendControlCharacter from "./SendControlCharacter.js";
+
+const server = new Server(
+  {
+    name: "iterm-mcp",
+    version: "0.1.0",
+  },
+  {
+    capabilities: {
+      tools: {},
+    },
+  }
+);
+
+server.setRequestHandler(ListToolsRequestSchema, async () => {
+  return {
+    tools: [
+      {
+        name: "write_to_terminal",
+        description: "Writes text to the active iTerm terminal - often used to run a command in the terminal",
+        inputSchema: {
+          type: "object",
+          properties: {
+            command: {
+              type: "string",
+              description: "The command to run or text to write to the terminal"
+            },
+          },
+          required: ["command"]
+        }
+      },
+      {
+        name: "read_terminal_output",
+        description: "Reads the output from the active iTerm terminal",
+        inputSchema: {
+          type: "object",
+          properties: {
+            linesOfOutput: {
+              type: "number",
+              description: "The number of lines of output to read."
+            },
+          },
+          required: ["linesOfOutput"]
+        }
+      },
+      {
+        name: "send_control_character",
+        description: "Sends a control character to the active iTerm terminal (e.g., Control-C)",
+        inputSchema: {
+          type: "object",
+          properties: {
+            letter: {
+              type: "string",
+              description: "The letter corresponding to the control character (e.g., 'C' for Control-C)"
+            },
+          },
+          required: ["letter"]
+        }
+      }
+    ]
+  };
+});
+
+server.setRequestHandler(CallToolRequestSchema, async (request) => {
+  switch (request.params.name) {
+    case "write_to_terminal": {
+      let executor = new CommandExecutor();
+      const command = String(request.params.arguments?.command);
+      const beforeCommandBuffer = await TtyOutputReader.retrieveBuffer();
+      const beforeCommandBufferLines = beforeCommandBuffer.split("\n").length;
+      
+      await executor.executeCommand(command);
+      
+      const afterCommandBuffer = await TtyOutputReader.retrieveBuffer();
+      const afterCommandBufferLines = afterCommandBuffer.split("\n").length;
+      const outputLines = afterCommandBufferLines - beforeCommandBufferLines
+
+      return {
+        content: [{
+          type: "text",
+          text: `${outputLines} lines were output after sending the command to the terminal. Read the last ${outputLines} lines of terminal contents to orient yourself. Never assume that the command was executed or that it was successful.`
+        }]
+      };
+    }
+    case "read_terminal_output": {
+      const linesOfOutput = Number(request.params.arguments?.linesOfOutput) || 25
+      const output = await TtyOutputReader.call(linesOfOutput)
+
+      return {
+        content: [{
+          type: "text",
+          text: output
+        }]
+      };
+    }
+    case "send_control_character": {
+      const ttyControl = new SendControlCharacter();
+      const letter = String(request.params.arguments?.letter);
+      await ttyControl.send(letter);
+      
+      return {
+        content: [{
+          type: "text",
+          text: `Sent control character: Control-${letter.toUpperCase()}`
+        }]
+      };
+    }
+    default:
+      throw new Error("Unknown tool");
+  }
+});
+
+async function main() {
+  const transport = new StdioServerTransport();
+  await server.connect(transport);
+}
+
+main().catch((error) => {
+  console.error("Server error:", error);
+  process.exit(1);
+});
+
+================
+File: src/ProcessTracker.ts
+================
+import { exec } from 'child_process';
+import { promisify } from 'util';
+import { existsSync } from 'fs';
+import { basename } from 'path';
+
+const execAsync = promisify(exec);
+
+interface ProcessInfo {
+  pid: string;
+  ppid: string;
+  pgid: string;
+  sess: string;
+  state: string;
+  command: string;
+  children: ProcessInfo[];
+  cpuPercent: number;
+  memory: string;
+  time: string;
+}
+
+interface ProcessMetrics {
+  totalCPUPercent: number;
+  totalMemoryMB: number;
+  processBreakdown: {
+    name: string;
+    pid: string;
+    cpuPercent: number;
+    memory: string;
+  }[];
+}
+
+interface ActiveProcess {
+  pid: string;
+  ppid: string;
+  pgid: string;
+  name: string;
+  command: string;
+  state: string;
+  commandChain: string;
+  environment?: string;
+  applicationContext?: string;
+  metrics: ProcessMetrics;
+}
+
+class ProcessTracker {
+  private readonly shellNames = new Set(['bash', 'zsh', 'sh', 'fish', 'csh', 'tcsh']);
+  private readonly replNames = new Set([
+    'irb', 'pry', 'rails', 'node', 'python', 'ipython',
+    'scala', 'ghci', 'iex', 'lein', 'clj', 'julia', 'R', 'php', 'lua'
+  ]);
+  
+  /**
+   * Get the active process and its resource usage in an iTerm tab
+   */
+  async getActiveProcess(ttyPath: string): Promise<ActiveProcess | null> {
+    try {
+      if (!existsSync(ttyPath)) {
+        throw new Error(`TTY path does not exist: ${ttyPath}`);
+      }
+
+      const ttyName = basename(ttyPath);
+      const processes = await this.getProcessesForTTY(ttyName);
+      
+      if (!processes.length) {
+        return null;
+      }
+
+      const fgPgid = await this.getForegroundProcessGroup(ttyName);
+      if (!fgPgid) {
+        return null;
+      }
+
+      // Get all processes in the foreground process group
+      const fgProcesses = processes.filter(p => p.pgid === fgPgid);
+      if (!fgProcesses.length) {
+        return null;
+      }
+
+      const activeProcess = this.findMostInterestingProcess(fgProcesses);
+      const commandChain = this.buildCommandChain(activeProcess, processes);
+      const { environment, applicationContext } = this.detectEnvironment(activeProcess, processes);
+
+      // Build the process tree and calculate metrics
+      const metrics = this.calculateProcessMetrics(activeProcess, processes);
+
+      return {
+        pid: activeProcess.pid,
+        ppid: activeProcess.ppid,
+        pgid: activeProcess.pgid,
+        name: this.getProcessName(activeProcess.command),
+        command: activeProcess.command,
+        state: activeProcess.state,
+        commandChain,
+        environment,
+        applicationContext,
+        metrics
+      };
+
+    } catch (error) {
+      console.error('Error getting active process:', error);
+      return null;
+    }
+  }
+
+  /**
+   * Get all processes associated with a TTY including resource usage
+   */
+  private async getProcessesForTTY(ttyName: string): Promise<ProcessInfo[]> {
+    try {
+      // Include CPU%, memory, and accumulated CPU time in the output
+      const { stdout } = await execAsync(
+        `ps -t ${ttyName} -o pid,ppid,pgid,sess,state,%cpu,rss,time,command -w`
+      );
+
+      const lines = stdout.trim().split('\n');
+      if (lines.length < 2) {
+        return [];
+      }
+
+      const processes: ProcessInfo[] = [];
+      const processByPid: Record<string, ProcessInfo> = {};
+
+      // Parse all processes (skip header line)
+      for (const line of lines.slice(1)) {
+        const parts = line.trim().split(/\s+/);
+        if (parts.length >= 9) {
+          const process: ProcessInfo = {
+            pid: parts[0],
+            ppid: parts[1],
+            pgid: parts[2],
+            sess: parts[3],
+            state: parts[4],
+            cpuPercent: parseFloat(parts[5]),
+            memory: parts[6],  // RSS in KB
+            time: parts[7],    // Accumulated CPU time
+            command: parts.slice(8).join(' '),
+            children: []
+          };
+          processes.push(process);
+          processByPid[process.pid] = process;
+        }
+      }
+
+      // Build process tree
+      for (const process of processes) {
+        const parent = processByPid[process.ppid];
+        if (parent) {
+          parent.children.push(process);
+        }
+      }
+
+      return processes;
+    } catch (error) {
+      console.error('Error getting processes:', error);
+      return [];
+    }
+  }
+
+  /**
+   * Get the foreground process group ID for a TTY
+   */
+  private async getForegroundProcessGroup(ttyName: string): Promise<string | null> {
+    try {
+      const { stdout } = await execAsync(
+        `bash -c 'ps -o pgid= -t ${ttyName} | head -n1'`
+      );
+      return stdout.trim();
+    } catch {
+      return null;
+    }
+  }
+
+  /**
+   * Detect the environment and context of the process
+   */
+  private detectEnvironment(
+    process: ProcessInfo,
+    allProcesses: ProcessInfo[]
+  ): { environment?: string; applicationContext?: string } {
+    const cmd = process.command.toLowerCase();
+    const cmdParts = cmd.split(/\s+/);
+    const name = this.getProcessName(process.command).toLowerCase();
+
+    // Check for Rails console
+    if (cmd.includes('rails console') || (name === 'ruby' && cmd.includes('rails server'))) {
+      // Try to extract Rails environment and app name
+      const envMatch = cmd.match(/RAILS_ENV=(\w+)/);
+      const appNameMatch = process.command.match(/\/([^/]+)\/config\/environment/);
+      
+      const environment = 'Rails Console';
+      const railsEnv = envMatch?.[1] || 'development';
+      const appName = appNameMatch?.[1] || 'Rails App';
+      
+      return {
+        environment,
+        applicationContext: `${appName} (${railsEnv})`
+      };
+    }
+
+    // Check for other REPLs
+    if (this.replNames.has(name)) {
+      const replMap: Record<string, string> = {
+        'irb': 'Ruby IRB',
+        'pry': 'Pry Console',
+        'node': 'Node.js REPL',
+        'python': 'Python REPL',
+        'ipython': 'IPython Console'
+      };
+      
+      return {
+        environment: replMap[name] || `${name.toUpperCase()} REPL`
+      };
+    }
+
+    // Check for package managers
+    if (name === 'brew' || name === 'npm' || name === 'yarn' || name === 'pip') {
+      return {
+        environment: `${name.charAt(0).toUpperCase() + name.slice(1)} Package Manager`
+      };
+    }
+
+    return {};
+  }
+
+  /**
+   * Find the most interesting process from a list of processes
+   */
+  private findMostInterestingProcess(processes: ProcessInfo[]): ProcessInfo {
+    return processes.reduce((best, current) => {
+      const bestScore = this.calculateProcessScore(best);
+      const currentScore = this.calculateProcessScore(current);
+      return currentScore > bestScore ? current : best;
+    }, processes[0]);
+  }
+
+  /**
+   * Calculate how interesting a process is based on various factors
+   */
+  private calculateProcessScore(process: ProcessInfo): number {
+    const cmdName = this.getProcessName(process.command);
+    const cmd = process.command.toLowerCase();
+    
+    let score = 0;
+    
+    // Base scores for process state
+    // 'R' (running) processes get 2 points, 'S' (sleeping) get 1 point
+    score += process.state === 'R' ? 2 : process.state === 'S' ? 1 : 0;
+    
+    // CPU usage bonus
+    // Add up to 5 points based on CPU usage percentage (1 point per 10%)
+    score += Math.min(process.cpuPercent / 10, 5);
+    
+    // Penalize shell processes unless they're the only option
+    // Shell processes are less interesting, so deduct 1 point
+    if (this.shellNames.has(cmdName)) {
+      score -= 1;
+    }
+    
+    // Give high priority to REPL processes
+    // Add 3 points for REPLY processes
+    if (this.replNames.has(cmdName)) {
+      score += 3;
+    }
+    
+    
+    // Bonus for active package manager operations
+    // Add 2 points for package managers like 'brew', 'npm', or 'yarn' if they are using CPU
+    if ((cmdName === 'brew' || cmdName === 'npm' || cmdName === 'yarn') && 
+        process.cpuPercent > 0) {
+      score += 2;
+    }
+    
+    return score;
+  }
+
+  /**
+   * Get the base process name from a command
+   */
+  private getProcessName(command: string): string {
+    return basename(command.split(/\s+/)[0]);
+  }
+
+  /**
+   * Build the command chain showing process hierarchy
+   */
+  private buildCommandChain(
+    process: ProcessInfo,
+    allProcesses: ProcessInfo[]
+  ): string {
+    const processByPid: Record<string, ProcessInfo> = {};
+    for (const p of allProcesses) {
+      processByPid[p.pid] = p;
+    }
+
+    const chain: string[] = [];
+    let current: ProcessInfo | undefined = process;
+    const maxChainLength = 10;
+
+    while (current && chain.length < maxChainLength) {
+      const name = this.getProcessName(current.command);
+      
+      // Add context for special processes
+      if (name === 'ruby' && current.command.includes('rails console')) {
+        chain.push('rails console');
+      } else if (name === 'brew' && current.command.includes('install')) {
+        chain.push(`brew install ${current.command.split('install')[1].trim()}`);
+      } else {
+        chain.push(name);
+      }
+      
+      current = processByPid[current.ppid];
+    }
+
+    return chain.reverse().join(' -> ');
+  }
+
+  /**
+   * Calculate resource metrics for a process and all its descendants
+   */
+  private calculateProcessMetrics(
+    process: ProcessInfo,
+    allProcesses: ProcessInfo[]
+  ): ProcessMetrics {
+    // Get all descendant PIDs
+    const descendants = this.getAllDescendants(process, allProcesses);
+    const allRelatedProcesses = [process, ...descendants];
+
+    // Calculate totals
+    let totalCPUPercent = 0;
+    let totalMemoryMB = 0;
+    const processBreakdown: ProcessMetrics['processBreakdown'] = [];
+
+    for (const proc of allRelatedProcesses) {
+      const cpuPercent = proc.cpuPercent;
+      const memoryMB = this.parseMemoryString(proc.memory);
+      
+      totalCPUPercent += cpuPercent;
+      totalMemoryMB += memoryMB;
+
+      // Only include in breakdown if using significant resources
+      if (cpuPercent > 0.1 || memoryMB > 5) {
+        processBreakdown.push({
+          name: this.getProcessName(proc.command),
+          pid: proc.pid,
+          cpuPercent: cpuPercent,
+          memory: proc.memory
+        });
+      }
+    }
+
+    // Sort breakdown by CPU usage
+    processBreakdown.sort((a, b) => b.cpuPercent - a.cpuPercent);
+
+    return {
+      totalCPUPercent,
+      totalMemoryMB,
+      processBreakdown
+    };
+  }
+
+  /**
+   * Get all descendant processes of a given process
+   */
+  private getAllDescendants(
+    process: ProcessInfo,
+    allProcesses: ProcessInfo[]
+  ): ProcessInfo[] {
+    const descendants: ProcessInfo[] = [];
+    const processByPid: Record<string, ProcessInfo> = {};
+    
+    // Build lookup table
+    for (const p of allProcesses) {
+      processByPid[p.pid] = p;
+    }
+
+    // Recursive function to collect descendants
+    const collect = (proc: ProcessInfo) => {
+      const children = allProcesses.filter(p => p.ppid === proc.pid);
+      for (const child of children) {
+        descendants.push(child);
+        collect(child);
+      }
+    };
+
+    collect(process);
+    return descendants;
+  }
+
+  /**
+   * Parse memory string (KB) to MB
+   */
+  private parseMemoryString(memory: string): number {
+    const kb = parseInt(memory, 10);
+    return kb / 1024; // Convert KB to MB
+  }
+}
+
+// Example usage
+async function main() {
+  const tracker = new ProcessTracker();
+  const ttyPath = '/dev/ttys001'; // Example TTY path
+  
+  const process = await tracker.getActiveProcess(ttyPath);
+  
+  if (process) {
+    console.log('Active process:');
+    console.log(`  Name: ${process.name}`);
+    console.log(`  Command: ${process.command}`);
+    console.log(`  Command Chain: ${process.commandChain}`);
+    if (process.environment) {
+      console.log(`  Environment: ${process.environment}`);
+    }
+    
+    console.log('\nResource Usage:');
+    console.log(`  Total CPU: ${process.metrics.totalCPUPercent.toFixed(1)}%`);
+    console.log(`  Total Memory: ${process.metrics.totalMemoryMB.toFixed(1)} MB`);
+    
+    if (process.metrics.processBreakdown.length > 0) {
+      console.log('\nProcess Breakdown:');
+      for (const proc of process.metrics.processBreakdown) {
+        console.log(`  ${proc.name} (${proc.pid}):`);
+        console.log(`    CPU: ${proc.cpuPercent.toFixed(1)}%`);
+        console.log(`    Memory: ${proc.memory} KB`);
+      }
+    }
+  } else {
+    console.log('No active process found');
+  }
+}
+
+export default ProcessTracker;
+
+================
+File: src/SendControlCharacter.ts
+================
+import { exec } from 'node:child_process';
+import { promisify } from 'node:util';
+
+const execPromise = promisify(exec);
+
+class SendControlCharacter {
+  async send(letter: string): Promise<void> {
+    // Validate input
+    letter = letter.toUpperCase();
+    if (!/^[A-Z]$/.test(letter)) {
+      throw new Error('Invalid control character letter');
+    }
+
+    // Convert to control code
+    const controlCode = letter.charCodeAt(0) - 64;
+
+    // AppleScript to send the control character
+    const ascript = `
+      tell application "iTerm2"
+        tell front window
+          tell current session of current tab
+            -- Send the control character
+            write text (ASCII character ${controlCode})
+          end tell
+        end tell
+      end tell
+    `;
+
+    try {
+      await execPromise(`osascript -e '${ascript}'`);
+    } catch (error: unknown) {
+      throw new Error(`Failed to send control character: ${(error as Error).message}`);
+    }
+  }
+}
+
+export default SendControlCharacter;
+
+================
+File: src/TtyOutputReader.ts
+================
+import { exec } from 'node:child_process';
+import { promisify } from 'node:util';
+
+const execPromise = promisify(exec);
+
+export default class TtyOutputReader {
+  static async call(linesOfOutput?: number) {
+    const buffer = await this.retrieveBuffer();
+    if (!linesOfOutput) {
+      return buffer;
+    }
+    const lines = buffer.split('\n');
+    return lines.slice(-linesOfOutput - 1).join('\n');
+  }
+
+  static async retrieveBuffer(): Promise<string> {
+    const ascript = `
+      tell application "iTerm2"
+        tell front window
+          tell current session of current tab
+            set numRows to number of rows
+            set allContent to contents
+            return allContent
+          end tell
+        end tell
+      end tell
+    `;
+    
+    const { stdout: finalContent } = await execPromise(`osascript -e '${ascript}'`);
+    return finalContent.trim();
+  }
+}
+
+================
+File: test/CommandExecutor.test.ts
+================
+import CommandExecutor from '../src/CommandExecutor.js';
+import TtyOutputReader from '../src/TtyOutputReader.js';
+
+async function testExecuteCommand() {
+  const executor = new CommandExecutor();
+  // Combine all arguments after the script name into a single command
+  const command = process.argv.slice(2).join(' ') || 'date';
+  
+  try {
+    const beforeCommandBuffer = await TtyOutputReader.retrieveBuffer();
+    const beforeCommandBufferLines = beforeCommandBuffer.split("\n").length;
+
+    await executor.executeCommand(command);
+
+    const afterCommandBuffer = await TtyOutputReader.retrieveBuffer();
+    const afterCommandBufferLines = afterCommandBuffer.split("\n").length;
+    const outputLines = afterCommandBufferLines - beforeCommandBufferLines
+    
+    const buffer = await TtyOutputReader.call(outputLines)
+    console.log(buffer);
+
+    console.log(`Lines: ${outputLines}`);
+  } catch (error) {
+    console.error('Error executing command:', (error as Error).message);
+  }
+
+  
+}
+
+testExecuteCommand();
+
+================
+File: .gitignore
+================
+node_modules/
+build/
+*.log
+.env*
+tmp
+
+================
+File: LICENSE.md
+================
+Copyright 2025 Ferris Lucas
+
+Permission is hereby granted, free of charge, to any person obtaining a copy of this software and associated documentation files (the “Software”), to deal in the Software without restriction, including without limitation the rights to use, copy, modify, merge, publish, distribute, sublicense, and/or sell copies of the Software, and to permit persons to whom the Software is furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED “AS IS”, WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
+
+================
+File: package.json
+================
+{
+  "name": "iterm-mcp",
+  "version": "1.2.3",
+  "description": "A Model Context Protocol server that provides access to the currently active tab of iTerm",
+  "homepage": "https://github.com/ferrislucas/iterm-mcp#readme",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/ferrislucas/iterm-mcp.git"
+  },
+  "author": "Ferris Lucas",
+  "bugs": {
+    "url": "https://github.com/ferrislucas/iterm-mcp/issues"
+  },
+  "type": "module",
+  "license": "MIT",
+  "bin": {
+    "iterm-mcp": "./build/index.js"
+  },
+  "files": [
+    "build"
+  ],
+  "scripts": {
+    "build": "tsc && node -e \"require('fs').chmodSync('build/index.js', '755')\"",
+    "prepublishOnly": "yarn run build",
+    "watch": "tsc --watch",
+    "inspector": "npx @modelcontextprotocol/inspector build/index.js",
+    "debug": "ts-node --esm test/CommandExecutor.test.ts"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "0.6.0"
+  },
+  "devDependencies": {
+    "@types/node": "^20.11.24",
+    "ts-node": "^10.9.2",
+    "typescript": "^5.3.3"
+  }
+}
+
+================
+File: README.md
+================
+# iterm-mcp 
+A Model Context Protocol server that provides access to your iTerm session.
+
+![Main Image](.github/images/demo.gif)
+
+### Features
+
+**Efficient Token Use:** iterm-mcp gives the model the ability to inspect only the output that the model is interested in. The model typically only wants to see the last few lines of output even for long running commands. 
+
+**Natural Integration:** You share iTerm with the model. You can ask questions about what's on the screen, or delegate a task to the model and watch as it performs each step.
+
+**Full Terminal Control and REPL support:** The model can start and interact with REPL's as well as send control characters like ctrl-c, ctrl-z, etc.
+
+**Easy on the Dependencies:** iterm-mcp is built with minimal dependencies and is runnable via npx. It's designed to be easy to add to Claude Desktop and other MCP clients. It should just work.
+
+
+<a href="https://glama.ai/mcp/servers/h89lr05ty6"><img width="380" height="200" src="https://glama.ai/mcp/servers/h89lr05ty6/badge" alt="iTerm Server MCP server" /></a>
+
+## Safety Considerations
+
+* The user is responsible for using the tool safely.
+* No built-in restrictions: iterm-mcp makes no attempt to evaluate the safety of commands that are executed.
+* Models can behave in unexpected ways. The user is expected to monitor activity and abort when appropriate.
+* For multi-step tasks, you may need to interrupt the model if it goes off track. Start with smaller, focused tasks until you're familiar with how the model behaves. 
+
+### Tools
+- `write_to_terminal` - Writes to the active iTerm terminal, often used to run a command. Returns the number of lines of output produced by the command.
+- `read_terminal_output` - Reads the requested number of lines from the active iTerm terminal.
+- `send_control_character` - Sends a control character to the active iTerm terminal.
+
+### Requirements
+
+* iTerm2 must be running
+* Node version 18 or greater
+
+
+## Installation
+
+To use with Claude Desktop, add the server config:
+
+On macOS: `~/Library/Application Support/Claude/claude_desktop_config.json`
+On Windows: `%APPDATA%/Claude/claude_desktop_config.json`
+
+```json
+{
+  "mcpServers": {
+    "iterm-mcp": {
+      "command": "npx",
+      "args": [
+        "-y",
+        "iterm-mcp"
+      ]
+    }
+  }
+}
+```
+
+### Installing via Smithery
+
+To install iTerm for Claude Desktop automatically via [Smithery](https://smithery.ai/server/iterm-mcp):
+
+```bash
+npx -y @smithery/cli install iterm-mcp --client claude
+```
+[![smithery badge](https://smithery.ai/badge/iterm-mcp)](https://smithery.ai/server/iterm-mcp)
+
+## Development
+
+Install dependencies:
+```bash
+yarn install
+```
+
+Build the server:
+```bash
+yarn run build
+```
+
+For development with auto-rebuild:
+```bash
+yarn run watch
+```
+
+### Debugging
+
+Since MCP servers communicate over stdio, debugging can be challenging. We recommend using the [MCP Inspector](https://github.com/modelcontextprotocol/inspector), which is available as a package script:
+
+```bash
+yarn run inspector
+yarn debug <command>
+```
+
+The Inspector will provide a URL to access debugging tools in your browser.
+
+================
+File: tsconfig.json
+================
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "module": "Node16",
+    "moduleResolution": "Node16",
+    "outDir": "./build",
+    "rootDir": "./src",
+    "strict": true,
+    "esModuleInterop": true,
+    "skipLibCheck": true,
+    "forceConsistentCasingInFileNames": true
+  },
+  "include": ["src/**/*"],
+  "exclude": ["node_modules"]
+}
+
+
+
+================================================================
+End of Codebase
+================================================================

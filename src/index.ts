@@ -55,13 +55,13 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
       },
       {
         name: "send_control_character",
-        description: "Sends a control character to the active iTerm terminal (e.g., Control-C)",
+        description: "Sends a control character to the active iTerm terminal (e.g., Control-C, or special sequences like ']' for telnet escape)",
         inputSchema: {
           type: "object",
           properties: {
             letter: {
               type: "string",
-              description: "The letter corresponding to the control character (e.g., 'C' for Control-C)"
+              description: "The letter corresponding to the control character (e.g., 'C' for Control-C, ']' for telnet escape)"
             },
           },
           required: ["letter"]
