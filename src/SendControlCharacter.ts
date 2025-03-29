@@ -5,14 +5,28 @@ const execPromise = promisify(exec);
 
 class SendControlCharacter {
   async send(letter: string): Promise<void> {
-    // Validate input
-    letter = letter.toUpperCase();
-    if (!/^[A-Z]$/.test(letter)) {
-      throw new Error('Invalid control character letter');
+    let controlCode: number;
+    
+    // Handle special cases for telnet escape sequences
+    if (letter.toUpperCase() === ']') {
+      // ASCII 29 (GS - Group Separator) - the telnet escape character
+      controlCode = 29;
+    } 
+    // Add other special cases here as needed
+    else if (letter.toUpperCase() === 'ESCAPE' || letter.toUpperCase() === 'ESC') {
+      // ASCII 27 (ESC - Escape)
+      controlCode = 27;
     }
-
-    // Convert to control code
-    const controlCode = letter.charCodeAt(0) - 64;
+    else {
+      // Validate input for standard control characters
+      letter = letter.toUpperCase();
+      if (!/^[A-Z]$/.test(letter)) {
+        throw new Error('Invalid control character letter');
+      }
+      
+      // Convert to standard control code (A=1, B=2, etc.)
+      controlCode = letter.charCodeAt(0) - 64;
+    }
 
     // AppleScript to send the control character
     const ascript = `
