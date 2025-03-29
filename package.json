@@ -24,7 +24,7 @@
     "prepublishOnly": "yarn run build",
     "watch": "tsc --watch",
     "inspector": "npx @modelcontextprotocol/inspector build/index.js",
-    "debug": "ts-node --esm test/CommandExecutor.test.ts"
+    "test": "ts-node --esm test/CommandExecutor.test.ts"
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "0.6.0"
