@@ -14,8 +14,6 @@ A Model Context Protocol server that provides access to your iTerm session.
 **Easy on the Dependencies:** iterm-mcp is built with minimal dependencies and is runnable via npx. It's designed to be easy to add to Claude Desktop and other MCP clients. It should just work.
 
 
-<a href="https://glama.ai/mcp/servers/h89lr05ty6"><img width="380" height="200" src="https://glama.ai/mcp/servers/h89lr05ty6/badge" alt="iTerm Server MCP server" /></a>
-
 ## Safety Considerations
 
 * The user is responsible for using the tool safely.
