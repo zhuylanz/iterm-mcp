@@ -1,7 +1,7 @@
 {
   "name": "iterm-mcp",
-  "version": "1.2.5",
-  "description": "A Model Context Protocol server that provides access to the currently active tab of iTerm",
+  "version": "1.3.0",
+  "description": "A Model Context Protocol server that provides access to the currently active tab of iTerm using fastmcp",
   "homepage": "https://github.com/ferrislucas/iterm-mcp#readme",
   "repository": {
     "type": "git",
@@ -23,13 +23,18 @@
     "build": "tsc && node -e \"require('fs').chmodSync('build/index.js', '755')\"",
     "prepublishOnly": "yarn run build",
     "watch": "tsc --watch",
-    "inspector": "npx @modelcontextprotocol/inspector build/index.js",
     "test": "ts-node --esm test/CommandExecutor.test.ts"
   },
   "dependencies": {
-    "@modelcontextprotocol/sdk": "0.6.0"
+    "commander": "^11.1.0",
+    "cors": "^2.8.5",
+    "dotenv": "^16.5.0",
+    "fastmcp": "^1.22.4",
+    "zod": "^3.24.3"
   },
   "devDependencies": {
+    "@types/cors": "^2.8.17",
+    "@types/express": "^4.17.21",
     "@types/node": "^20.11.24",
     "ts-node": "^10.9.2",
     "typescript": "^5.3.3"
