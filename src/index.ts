@@ -16,11 +16,23 @@ const server = new FastMCP({
   version: '1.3.0',
 });
 
+// Create a command executor with terminal options from config
+const commandExecutor = new CommandExecutor({
+  createDedicatedTerminal: config.createDedicatedTerminal,
+  profileName: config.agentProfile,
+  terminalName: config.terminalName,
+});
+
+// Initialize terminal for the TtyOutputReader and SendControlCharacter
+// to ensure they all use the same terminal
+const terminalManager = commandExecutor.getTerminalManager();
+TtyOutputReader.setTerminalManager(terminalManager);
+
 // Define and add the writeToTerminal tool
 server.addTool({
   name: 'write_to_terminal',
   description:
-    'Writes text to the active iTerm terminal - often used to run a command in the terminal',
+    'Writes text to the iTerm terminal - often used to run a command in the terminal',
   parameters: z.object({
     command: z
       .string()
@@ -28,25 +40,37 @@ server.addTool({
   }),
   execute: async (args) => {
     console.log(`Executing command: ${args.command}`);
-    const executor = new CommandExecutor();
 
-    const beforeCommandBuffer = await TtyOutputReader.retrieveBuffer();
-    const beforeCommandBufferLines = beforeCommandBuffer.split('\n').length;
+    try {
+      const beforeCommandBuffer = await TtyOutputReader.retrieveBuffer();
+      const beforeCommandBufferLines = beforeCommandBuffer.split('\n').length;
 
-    await executor.executeCommand(args.command);
+      // Execute the command and potentially create/use dedicated terminal
+      await commandExecutor.executeCommand(args.command);
+      
+      // Update the terminal session for the TtyOutputReader after command execution
+      // (in case a new terminal was created)
+      const terminalSession = commandExecutor.getTerminalSession();
+      if (terminalSession) {
+        TtyOutputReader.setTerminalSession(terminalSession);
+      }
 
-    const afterCommandBuffer = await TtyOutputReader.retrieveBuffer();
-    const afterCommandBufferLines = afterCommandBuffer.split('\n').length;
-    const outputLines = afterCommandBufferLines - beforeCommandBufferLines;
-
-    return `${outputLines} lines were output after sending the command to the terminal. Read the last ${outputLines} lines of terminal contents to orient yourself. Never assume that the command was executed or that it was successful.`;
+      const afterCommandBuffer = await TtyOutputReader.retrieveBuffer();
+      const afterCommandBufferLines = afterCommandBuffer.split('\n').length;
+      const outputLines = afterCommandBufferLines - beforeCommandBufferLines;
+      
+      return `${outputLines} lines were output after sending the command to the terminal. Read the last ${outputLines} lines of terminal contents to orient yourself. Never assume that the command was executed or that it was successful.`;
+    } catch (error) {
+      console.error('Error executing command:', error);
+      return `Error executing command. Please check the terminal for details or try again.`;
+    }
   },
 });
 
 // Define and add the readTerminalOutput tool
 server.addTool({
   name: 'read_terminal_output',
-  description: 'Reads the output from the active iTerm terminal',
+  description: 'Reads the output from the iTerm terminal',
   parameters: z.object({
     linesOfOutput: z
       .number()
@@ -57,8 +81,19 @@ server.addTool({
     console.log(
       `Reading ${args.linesOfOutput || 'all'} lines of terminal output`,
     );
-    const output = await TtyOutputReader.call(args.linesOfOutput);
-    return output;
+    try {
+      // Ensure we're reading from the correct terminal
+      const terminalSession = commandExecutor.getTerminalSession();
+      if (terminalSession) {
+        TtyOutputReader.setTerminalSession(terminalSession);
+      }
+      
+      const output = await TtyOutputReader.call(args.linesOfOutput);
+      return output;
+    } catch (error) {
+      console.error('Error reading terminal output:', error);
+      return `Error reading terminal output. Please try again.`;
+    }
   },
 });
 
@@ -66,7 +101,7 @@ server.addTool({
 server.addTool({
   name: 'send_control_character',
   description:
-    "Sends a control character to the active iTerm terminal (e.g., Control-C, or special sequences like ']' for telnet escape)",
+    "Sends a control character to the iTerm terminal (e.g., Control-C, or special sequences like ']' for telnet escape)",
   parameters: z.object({
     letter: z
       .string()
@@ -76,14 +111,33 @@ server.addTool({
   }),
   execute: async (args) => {
     console.log(`Sending control character: ${args.letter}`);
-    const ttyControl = new SendControlCharacter();
-    await ttyControl.send(args.letter);
-    return `Sent control character: Control-${args.letter.toUpperCase()}`;
+    try {
+      const ttyControl = new SendControlCharacter();
+      
+      // Set the terminal manager and session to ensure we send to the right terminal
+      const terminalSession = commandExecutor.getTerminalSession();
+      if (terminalManager && terminalSession) {
+        ttyControl.setTerminalManager(terminalManager);
+        ttyControl.setTerminalSession(terminalSession);
+      }
+      
+      await ttyControl.send(args.letter);
+      return `Sent control character: Control-${args.letter.toUpperCase()}`;
+    } catch (error) {
+      console.error('Error sending control character:', error);
+      return `Error sending control character. Please try again.`;
+    }
   },
 });
 
 // Get the transport configuration based on CLI options
 const transportConfig = TransportFactory.getTransport(config);
+
+// Log whether we're using a dedicated terminal and which profile is being used
+const terminalModeText = config.createDedicatedTerminal 
+  ? `Creating dedicated terminal with profile "${config.agentProfile}" and name "${config.terminalName}"`
+  : "Using active terminal (dedicated terminal mode disabled)";
+console.log(terminalModeText);
 
 // Start the server with the configured transport
 server

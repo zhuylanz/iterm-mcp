@@ -31,11 +31,45 @@
   - [x] Add error handling for SSE transport
   - [x] Update server connection setup
 
+## Terminal Management Implementation
+
+- [ ] Design Terminal Management Classes
+  - [ ] Define interface for terminal interactions
+  - [ ] Create TerminalManager class
+  - [ ] Implement window ID tracking system
+
+- [ ] Implement Agent-Specific Terminal Creation
+  - [ ] Add AppleScript commands to create window with "agent_term" profile
+  - [ ] Create mechanism to get and store window ID
+  - [ ] Implement window existence verification
+
+- [ ] Implement Window ID Persistence
+  - [ ] Create storage file for window ID persistence
+  - [ ] Implement save/load functions for window ID
+  - [ ] Add validation to ensure stored window still exists
+
+- [ ] Update Command Execution Flow
+  - [ ] Modify CommandExecutor to only use agent terminal
+  - [ ] Update terminal targeting to use window ID
+  - [ ] Update TtyOutputReader to target specific window
+  - [ ] Update SendControlCharacter to target specific window
+
+- [ ] Add Configuration Options
+  - [ ] Add environment variable for agent terminal profile
+  - [ ] Update CLI options for terminal configuration
+  - [ ] Implement configuration validation
+
 ## Testing
 
 - [x] Update Test Infrastructure
   - [x] Add test for SseServerTransport
   - [x] Create a simple test client for SSE
+
+- [ ] Test Agent Terminal Management
+  - [ ] Test terminal creation with specific profile
+  - [ ] Test window ID persistence
+  - [ ] Test command execution in agent terminal
+  - [ ] Test recovery when window closed or not found
 
 - [ ] Test Both Transport Methods
   - [ ] Test stdio transport (existing functionality)
@@ -49,9 +83,15 @@
   - [x] Add SSE configuration instructions
   - [x] Update Claude Desktop configuration example
 
-- [x] Add Examples
+- [ ] Update Documentation for Terminal Management
+  - [ ] Document agent terminal profile approach
+  - [ ] Add instructions for setting up "agent_term" profile in iTerm2
+  - [ ] Update usage instructions
+
+- [ ] Add Examples
   - [x] Add example HTML client
   - [x] Add example configuration for different environments
+  - [ ] Add example for agent terminal profile setup
 
 - [ ] Final Tweaks
   - [ ] Code cleanup and formatting

@@ -22,6 +22,14 @@ export function loadEnvironmentConfig(): CliOptions {
     ),
     host: process.env.ITERM_MCP_HOST || DEFAULT_CLI_OPTIONS.host,
     basePath: process.env.ITERM_MCP_BASE_PATH || DEFAULT_CLI_OPTIONS.basePath,
+    
+    // Terminal management options
+    createDedicatedTerminal: 
+      process.env.ITERM_MCP_CREATE_DEDICATED_TERMINAL === 'false' ? false :
+      process.env.ITERM_MCP_CREATE_DEDICATED_TERMINAL === 'true' ? true :
+      DEFAULT_CLI_OPTIONS.createDedicatedTerminal,
+    agentProfile: process.env.ITERM_MCP_AGENT_PROFILE || DEFAULT_CLI_OPTIONS.agentProfile,
+    terminalName: process.env.ITERM_MCP_TERMINAL_NAME || DEFAULT_CLI_OPTIONS.terminalName,
   };
 }
 

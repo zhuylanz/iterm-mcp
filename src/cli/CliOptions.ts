@@ -10,6 +10,9 @@ export type TransportType = "stdio" | "sse";
  * - ITERM_MCP_PORT: Port number for SSE server
  * - ITERM_MCP_HOST: Host for SSE server
  * - ITERM_MCP_BASE_PATH: Base path for SSE server endpoints
+ * - ITERM_MCP_CREATE_DEDICATED_TERMINAL: Whether to create a dedicated terminal
+ * - ITERM_MCP_AGENT_PROFILE: iTerm2 profile to use for the agent terminal
+ * - ITERM_MCP_TERMINAL_NAME: Name for the dedicated terminal tab
  */
 export interface CliOptions {
   /**
@@ -31,6 +34,21 @@ export interface CliOptions {
    * Base path for SSE server endpoints (when transport is "sse")
    */
   basePath: string;
+
+  /**
+   * Whether to create a dedicated terminal for agent commands
+   */
+  createDedicatedTerminal: boolean;
+
+  /**
+   * iTerm2 profile to use for the agent terminal
+   */
+  agentProfile: string;
+
+  /**
+   * Name for the dedicated terminal tab
+   */
+  terminalName: string;
 }
 
 /**
@@ -40,5 +58,8 @@ export const DEFAULT_CLI_OPTIONS: CliOptions = {
   transport: "sse",
   port: 3000,
   host: "localhost",
-  basePath: ""
+  basePath: "",
+  createDedicatedTerminal: true,
+  agentProfile: "agent_term",
+  terminalName: "AI Terminal"
 };

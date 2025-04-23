@@ -18,8 +18,8 @@
     - 1 failure case
 
 ### ✅ Task Completion
-- **Mark completed tasks in `TASK.md`** immediately after finishing them.
-- Add new sub-tasks or TODOs discovered during development to `TASK.md` under a “Discovered During Work” section.
+- **Mark completed tasks in `3_tasks.md`** immediately after finishing them.
+- Add new sub-tasks or TODOs discovered during development to `3_tasks.md` under a “Discovered During Work” section.
 
 ### 📚 Documentation & Explainability
 - **Update `README.md`** when new features are added, dependencies change, or setup steps are modified.
@@ -30,4 +30,4 @@
 - **Never assume missing context. Ask questions if uncertain.**
 - **Never hallucinate libraries or functions** – only use known, verified Python packages.
 - **Always confirm file paths and module names** exist before referencing them in code or tests.
-- **Never delete or overwrite existing code** unless explicitly instructed to or if part of a task from `TASK.md`.
+- **Never delete or overwrite existing code** unless explicitly instructed to or if part of a task from `3_tasks.md`.
